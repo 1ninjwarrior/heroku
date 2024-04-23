@@ -15,7 +15,7 @@
  */
 
 package com.example.heroku;
-
+import org.springframework.ui.Model;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,10 +24,13 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -48,31 +51,57 @@ public class HerokuApplication {
   public static void main(String[] args) throws Exception {
     SpringApplication.run(HerokuApplication.class, args);
   }
+  public static class InputString {
+    private String value;
 
+    public String getValue() {
+        return value;
+    }
+
+    public void setValue(String value) {
+        this.value = value;
+    }
+}
   @RequestMapping("/")
   String index() {
     return "index";
   }
+  @RequestMapping("/dbinput")
+  public String dbInputForm(Model model) {
+      model.addAttribute("inputString", new InputString());
+      return "dbinput";
+  }
+  @PostMapping("/dbinput")
+public String dbInputSubmit(@ModelAttribute InputString inputString) {
+    // Insert the user input string into the database
+    try (Connection connection = dataSource.getConnection()) {
+        PreparedStatement stmt = connection.prepareStatement("INSERT INTO table_timestamp_and_random_string VALUES (now(), ?)");
+        stmt.setString(1, inputString.getValue());
+        stmt.executeUpdate();
+    } catch (Exception e) {
+        // Handle exception
+    }
+
+    return "redirect:/db";
+}
 
   @RequestMapping("/db")
   String db(Map<String, Object> model) {
-    try (Connection connection = dataSource.getConnection()) {
-      Statement stmt = connection.createStatement();
-      stmt.executeUpdate("CREATE TABLE IF NOT EXISTS table_timestamp_and_random_string (tick timestamp, random_string varchar(30))");
-      stmt.executeUpdate("INSERT INTO table_timestamp_and_random_string VALUES (now(), '" + getRandomString() + "')");
-      ResultSet rs = stmt.executeQuery("SELECT tick, random_string FROM table_timestamp_and_random_string");
-  
-      ArrayList<String> output = new ArrayList<String>();
-      while (rs.next()) {
-        output.add("Read from DB: " + rs.getTimestamp("tick") + " " + rs.getString("random_string"));
+      try (Connection connection = dataSource.getConnection()) {
+          Statement stmt = connection.createStatement();
+          ResultSet rs = stmt.executeQuery("SELECT tick, random_string FROM table_timestamp_and_random_string");
+
+          ArrayList<String> output = new ArrayList<String>();
+          while (rs.next()) {
+              output.add("Read from DB: " + rs.getTimestamp("tick") + " " + rs.getString("random_string"));
+          }
+
+          model.put("records", output);
+          return "db";
+      } catch (Exception e) {
+          model.put("message", e.getMessage());
+          return "error";
       }
-      System.out.println("Hello, this is Jaden's output");
-      model.put("records", output);
-      return "db";
-    } catch (Exception e) {
-      model.put("message", e.getMessage());
-      return "error";
-    }
   }
 
   private String getRandomString() {
